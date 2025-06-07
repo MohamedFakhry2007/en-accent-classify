@@ -1,9 +1,13 @@
 # requirements.txt
-# Using the specific "legacy" versions we know work together.
+#
+# A fully pinned, "time machine" configuration known to be compatible.
+# This avoids all dependency conflicts.
+
 speechbrain==0.5.15
 torch==1.13.1
 torchaudio==0.13.1
-huggingface-hub>=0.10.0,<0.11.0
-yt-dlp>=2023.7.6
-moviepy>=1.0.3
-streamlit>=1.20.0
+huggingface-hub==0.10.1
+yt-dlp==2023.3.4
+moviepy==1.0.3
+streamlit==1.22.0
+imageio-ffmpeg==0.4.8
