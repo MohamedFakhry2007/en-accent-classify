@@ -26,17 +26,17 @@ def load_model():
 # --- THIS FUNCTION CONTAINS THE FINAL FIX ---
 def download_video_with_yt_dlp(url, temp_dir):
     """
-    Downloads and merges the best video and audio streams to ensure audio is present.
+    Downloads and merges the best video and audio streams using a universal command.
     """
     try:
         filepath_template = os.path.join(temp_dir, "video.%(ext)s")
-        # This is the new, more robust command for yt-dlp
+        # This is the new, more robust "universal" command for yt-dlp.
+        # It handles both YouTube (separate streams) and Loom (single stream) correctly.
         command = [
             "yt-dlp",
-            # Format selection: best mp4 video + best m4a audio, merged.
-            # Fallback to the best single file if merging isn't possible.
-            "-f", "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best",
-            # Tell yt-dlp to merge the final output into an mp4 container
+            # THE FIX: This format string tells yt-dlp to get the best of everything.
+            "-f", "bestvideo+bestaudio/best",
+            # Tell yt-dlp to merge the final output into an mp4 container if possible.
             "--merge-output-format", "mp4",
             "-o", filepath_template,
             url
@@ -47,7 +47,6 @@ def download_video_with_yt_dlp(url, temp_dir):
             check=True, capture_output=True, text=True, timeout=120
         )
         
-        # After merging, the filename might be just "video.mp4"
         downloaded_files = [f for f in os.listdir(temp_dir) if f.startswith("video")]
         if not downloaded_files:
             raise Exception("yt-dlp ran without error but did not produce an output file.")
@@ -78,7 +77,7 @@ def extract_audio(video_path, audio_path, max_duration_sec):
         with VideoFileClip(video_path) as clip:
             full_audio = clip.audio
             if full_audio is None:
-                raise Exception("The video file does not contain an audio track even after download.")
+                raise Exception("The downloaded video file does not contain an audio track.")
             
             if clip.duration > max_duration_sec:
                 st.info(f"For efficiency, only the first {max_duration_sec} seconds of audio will be analyzed.")
@@ -109,12 +108,12 @@ def main():
     st.set_page_config(page_title=PAGE_TITLE, page_icon=PAGE_ICON)
     st.title(f"{PAGE_ICON} {PAGE_TITLE}")
     st.markdown("Enter a public video URL to analyze the speaker's English accent.")
-    st.info(f"ℹ️ **Note:** Downloads from YouTube may be blocked. Direct MP4 links are most reliable. The first {ANALYSIS_DURATION_SECONDS} seconds of the video will be analyzed.", icon="ℹ️")
+    st.info(f"ℹ️ **Note:** The first {ANALYSIS_DURATION_SECONDS} seconds of the video will be analyzed.", icon="ℹ️")
 
     classifier = load_model()
 
     with st.form(key="video_url_form"):
-        video_url = st.text_input("Video URL", placeholder="https://example.com/video.mp4")
+        video_url = st.text_input("Video URL", placeholder="https://www.loom.com/share/...")
         submit_button = st.form_submit_button(label="Analyze Accent")
 
     if submit_button and video_url:
