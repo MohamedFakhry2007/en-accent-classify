@@ -56,23 +56,28 @@ def download_video_with_yt_dlp(url, temp_dir):
         st.error(f"An unexpected error occurred during download: {e}")
         return None
 
-# --- THIS FUNCTION IS NOW MEMORY-EFFICIENT ---
+# --- THIS FUNCTION CONTAINS THE FINAL FIX ---
 def extract_audio(video_path, audio_path, max_duration_sec):
     """
-    Extracts a clip of audio to a 16kHz mono WAV file to save memory.
+    Extracts a clip of audio to a 16kHz mono WAV file using a robust method.
     """
     try:
         with VideoFileClip(video_path) as clip:
-            # Check if the clip is longer than our max duration
-            if clip.duration > max_duration_sec:
-                # Create a subclip of the first `max_duration_sec` seconds
-                audio_clip = clip.subclip(0, max_duration_sec).audio
-                st.info(f"For efficiency, only the first {max_duration_sec} seconds of audio will be analyzed.")
-            else:
-                # Use the full audio if the clip is short
-                audio_clip = clip.audio
+            # 1. Get the full audio track first.
+            full_audio = clip.audio
+            if full_audio is None:
+                raise Exception("The video file does not contain an audio track.")
             
-            audio_clip.write_audiofile(
+            # 2. Decide whether to use the full audio or a subclip of it.
+            if clip.duration > max_duration_sec:
+                st.info(f"For efficiency, only the first {max_duration_sec} seconds of audio will be analyzed.")
+                # 3. Create a subclip *from the audio track directly*.
+                audio_to_write = full_audio.subclip(0, max_duration_sec)
+            else:
+                audio_to_write = full_audio
+            
+            # 4. Write the final audio object to the file.
+            audio_to_write.write_audiofile(
                 audio_path, fps=16000, nbytes=2, codec='pcm_s16le',
                 logger=None, ffmpeg_params=["-ac", "1"]
             )
@@ -113,7 +118,6 @@ def main():
                     st.success("✅ Download complete!")
                     st.info("Step 2: Extracting audio...")
                     audio_path = os.path.join(tmpdir, "output_audio.wav")
-                    # We now pass the max duration to the function
                     if extract_audio(video_path, audio_path, max_duration_sec=ANALYSIS_DURATION_SECONDS):
                         st.info("Step 3: Analyzing accent...")
                         accent, confidence = classify_accent(audio_path, classifier)
