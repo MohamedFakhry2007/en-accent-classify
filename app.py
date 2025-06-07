@@ -23,20 +23,15 @@ def load_model():
         savedir=os.path.join(os.getcwd(), "accent-id-model-cache")
     )
 
-# --- THIS FUNCTION CONTAINS THE SIMPLIFIED DOWNLOAD COMMAND ---
 def download_video_with_yt_dlp(url, temp_dir):
     """
     Downloads the best stream with audio using the simplest possible command.
     """
     try:
-        # We save directly to a predictable filename to make it easier for moviepy.
         filepath = os.path.join(temp_dir, "video.mp4")
         command = [
             "yt-dlp",
-            # THE FIX: This is the most generic format request possible.
-            # "bestaudio" will be prioritized, and yt-dlp will handle the container.
             "-f", "bestaudio/best",
-            # We explicitly ask for an mp4 output. ffmpeg will convert if needed.
             "--remux-video", "mp4",
             "-o", filepath,
             url
@@ -68,30 +63,22 @@ def download_video_with_yt_dlp(url, temp_dir):
         st.error(f"An unexpected error occurred during download: {e}")
         return None
 
-# --- THIS FUNCTION CONTAINS THE MORE ROBUST EXTRACTION LOGIC ---
 def extract_audio(video_path, audio_path, max_duration_sec):
     """
     Extracts a clip of audio to a 16kHz mono WAV file using a more robust method.
     """
     try:
-        # Load the entire video file into a clip object first.
-        # This is more stable than operating directly on the file path.
         with VideoFileClip(video_path) as clip:
-            # Check if the clip's duration is longer than our max
             if clip.duration > max_duration_sec:
                 st.info(f"For efficiency, only the first {max_duration_sec} seconds of audio will be analyzed.")
-                # Create a subclip from the main clip
                 sub_clip = clip.subclip(0, max_duration_sec)
-                # Get the audio from the subclip
                 audio_to_write = sub_clip.audio
             else:
-                # Use the full audio if the clip is short
                 audio_to_write = clip.audio
 
             if audio_to_write is None:
                 raise Exception("The video file does not contain an audio track.")
 
-            # Write the final audio object to the file.
             audio_to_write.write_audiofile(
                 audio_path, fps=16000, nbytes=2, codec='pcm_s16le',
                 logger=None, ffmpeg_params=["-ac", "1"]
@@ -132,7 +119,9 @@ def main():
                     st.success("✅ Download complete!")
                     st.info("Step 2: Extracting audio...")
                     audio_path = os.path.join(tmpdir, "output_audio.wav")
-                    if extract__audio(video_path, audio_path, max_duration_sec=ANALYSIS_DURATION_SECONDS):
+                    
+                    # --- THIS IS THE FIX: Changed extract__audio to extract_audio ---
+                    if extract_audio(video_path, audio_path, max_duration_sec=ANALYSIS_DURATION_SECONDS):
                         st.info("Step 3: Analyzing accent...")
                         accent, confidence = classify_accent(audio_path, classifier)
 
