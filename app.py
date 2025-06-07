@@ -140,5 +140,20 @@ def main():
                         col1.metric("Predicted Accent", accent.capitalize())
                         col2.metric("Confidence", f"{confidence}%")
 
+    # --- THIS IS THE NEW FOOTER SECTION ---
+    # Add a visual separator line before the footer.
+    st.divider()
+
+    # Use markdown with HTML to style and center the footer text.
+    st.markdown(
+        """
+        <div style="text-align: center; color: grey; font-size: 0.85em;">
+            <p>Tool by <b>Mohamed Fakhry</b></p>
+            <p>For AI Agent Solutions Engineer Candidate Challenge by <b>REMWaste</b></p>
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
+
 if __name__ == "__main__":
     main()
