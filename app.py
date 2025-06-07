@@ -3,8 +3,6 @@ import subprocess
 import tempfile
 import streamlit as st
 from moviepy.editor import VideoFileClip
-
-# It's good practice to place imports from the same library together
 from speechbrain.pretrained import EncoderClassifier
 
 # --- Model and App Configuration ---
@@ -12,9 +10,8 @@ MODEL_ID = "Jzuluaga/accent-id-commonaccent_ecapa"
 PAGE_TITLE = "Accent Analysis Tool"
 PAGE_ICON = "🗣️"
 
-# --- Core Functions (Copied from notebook, with minor improvements) ---
+# --- Core Functions ---
 
-# Use Streamlit's caching to load the model only once. This is a HUGE performance boost.
 @st.cache_resource
 def load_model():
     """
@@ -27,20 +24,31 @@ def load_model():
 
 def download_video_with_yt_dlp(url, temp_dir):
     """
-    Downloads a video from any supported URL using yt-dlp.
+    Downloads a video and provides detailed error messages if it fails.
     """
     try:
         filepath_template = os.path.join(temp_dir, "video.%(ext)s")
+        # We run the command and capture its output
         subprocess.run(
-            ["yt-dlp", "--quiet", "--no-warnings", "-o", filepath_template, url],
-            check=True, capture_output=True, text=True
+            ["yt-dlp", "-o", filepath_template, url],
+            check=True,  # This will raise a CalledProcessError if it fails
+            capture_output=True,
+            text=True
         )
         downloaded_files = [f for f in os.listdir(temp_dir) if f.startswith("video")]
         if not downloaded_files:
-            raise Exception("yt-dlp ran but did not produce an output file.")
+            raise Exception("yt-dlp ran without error but did not produce an output file.")
         return os.path.join(temp_dir, downloaded_files[0])
+        
+    # --- THIS IS THE CRITICAL IMPROVEMENT ---
+    except subprocess.CalledProcessError as e:
+        # If yt-dlp fails, we now print its specific error message
+        st.error("Video Download Failed. The `yt-dlp` command returned an error:")
+        # e.stderr contains the actual error from the command line tool
+        st.code(f"yt-dlp error output:\n{e.stderr}")
+        return None
     except Exception as e:
-        st.error(f"Video Download Failed: {e}")
+        st.error(f"An unexpected error occurred during download: {e}")
         return None
 
 def extract_audio(video_path, audio_path):
@@ -73,17 +81,14 @@ def main():
     st.title(f"{PAGE_ICON} {PAGE_TITLE}")
     st.markdown("Enter a public video URL (e.g., YouTube, Loom) to analyze the speaker's English accent.")
 
-    # Load the model initially
     classifier = load_model()
 
-    # Create a form for the user input
     with st.form(key="video_url_form"):
         video_url = st.text_input("Video URL", placeholder="https://www.youtube.com/watch?v=...")
         submit_button = st.form_submit_button(label="Analyze Accent")
 
     if submit_button and video_url:
-        with st.spinner("Processing video... This may take a moment."):
-            # Use a temporary directory for file management
+        with st.spinner("Processing..."):
             with tempfile.TemporaryDirectory() as tmpdir:
                 st.info("Step 1: Downloading video...")
                 video_path = download_video_with_yt_dlp(video_url, tmpdir)
@@ -101,8 +106,6 @@ def main():
                         col1, col2 = st.columns(2)
                         col1.metric("Predicted Accent", accent.capitalize())
                         col2.metric("Confidence", f"{confidence}%")
-                        
-                        st.markdown(f"The model predicts the speaker's accent is **{accent.capitalize()}** with {confidence}% confidence.")
 
 if __name__ == "__main__":
     main()
