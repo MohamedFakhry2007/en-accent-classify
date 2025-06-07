@@ -2,7 +2,7 @@ import os
 import subprocess
 import tempfile
 import streamlit as st
-from moviepy.editor import VideoFileClip
+from moviepy.editor import VideoFileClip # We still need this for a quick duration check
 from speechbrain.pretrained import EncoderClassifier
 
 # --- Model and App Configuration ---
@@ -36,16 +36,13 @@ def download_video_with_yt_dlp(url, temp_dir):
             "-o", filepath,
             url
         ]
-
         subprocess.run(
             command,
             check=True, capture_output=True, text=True, timeout=120
         )
-
         if not os.path.exists(filepath):
             raise Exception("yt-dlp ran without error but did not produce an output file.")
         return filepath
-
     except subprocess.CalledProcessError as e:
         error_message = e.stderr
         st.error("Video Download Failed.")
@@ -63,30 +60,47 @@ def download_video_with_yt_dlp(url, temp_dir):
         st.error(f"An unexpected error occurred during download: {e}")
         return None
 
+# --- THIS IS THE NEW, ROCK-SOLID EXTRACTION FUNCTION ---
 def extract_audio(video_path, audio_path, max_duration_sec):
     """
-    Extracts a clip of audio to a 16kHz mono WAV file using a more robust method.
+    Extracts audio using a direct, robust call to ffmpeg, bypassing moviepy's parser.
     """
+    st.info("Extracting audio with direct ffmpeg call...")
     try:
+        # First, we still use moviepy for one quick, safe task: getting the duration.
         with VideoFileClip(video_path) as clip:
-            if clip.duration > max_duration_sec:
-                st.info(f"For efficiency, only the first {max_duration_sec} seconds of audio will be analyzed.")
-                sub_clip = clip.subclip(0, max_duration_sec)
-                audio_to_write = sub_clip.audio
-            else:
-                audio_to_write = clip.audio
-
-            if audio_to_write is None:
-                raise Exception("The video file does not contain an audio track.")
-
-            audio_to_write.write_audiofile(
-                audio_path, fps=16000, nbytes=2, codec='pcm_s16le',
-                logger=None, ffmpeg_params=["-ac", "1"]
-            )
+            duration = clip.duration
+        
+        # Build the ffmpeg command
+        command = [
+            "ffmpeg",
+            "-i", video_path,       # Input file
+            "-vn",                  # No video
+            "-acodec", "pcm_s16le", # Audio codec for WAV
+            "-ar", "16000",         # Sample rate
+            "-ac", "1",             # Number of channels (mono)
+        ]
+        
+        # If the video is long, add the duration limit to the command
+        if duration > max_duration_sec:
+            st.info(f"For efficiency, only the first {max_duration_sec} seconds of audio will be analyzed.")
+            command.extend(["-t", str(max_duration_sec)])
+        
+        # Add the output file path to the command
+        command.append(audio_path)
+        
+        # Execute the command
+        subprocess.run(command, check=True, capture_output=True, text=True)
+        
         return True
     except Exception as e:
-        st.error(f"Audio Extraction Failed: {e}")
+        st.error("Audio Extraction Failed. There might be an issue with the video file's format.")
+        # Provide the ffmpeg error if available
+        if hasattr(e, 'stderr'):
+            with st.expander("Show ffmpeg Error"):
+                st.code(e.stderr)
         return False
+
 
 def classify_accent(audio_path, classifier):
     """
@@ -119,9 +133,8 @@ def main():
                     st.success("✅ Download complete!")
                     st.info("Step 2: Extracting audio...")
                     audio_path = os.path.join(tmpdir, "output_audio.wav")
-                    
-                    # --- THIS IS THE FIX: Changed extract__audio to extract_audio ---
                     if extract_audio(video_path, audio_path, max_duration_sec=ANALYSIS_DURATION_SECONDS):
+                        st.success("✅ Audio extracted!")
                         st.info("Step 3: Analyzing accent...")
                         accent, confidence = classify_accent(audio_path, classifier)
 
