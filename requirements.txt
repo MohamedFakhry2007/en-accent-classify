@@ -1,17 +1,16 @@
 # requirements.txt
 #
-# The "Bulletproof" configuration.
-# Pins NumPy to a 1.x version to prevent the NumPy 2.0 incompatibility crash.
+# Final "Bulletproof" configuration
+# Using a bleeding-edge yt-dlp to keep up with YouTube.
 
 speechbrain==0.5.15
 torch==1.13.1
 torchaudio==0.13.1
-
-# This is the most important line in the entire file
 numpy<2.0
-
 huggingface-hub==0.10.1
 moviepy==1.0.3
 imageio-ffmpeg==0.4.8
 streamlit==1.22.0
-yt-dlp==2024.04.09
+
+# Upgrading to the very latest version to ensure YouTube downloads work
+yt-dlp==2024.05.27
