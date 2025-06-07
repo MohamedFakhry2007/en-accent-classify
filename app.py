@@ -2,7 +2,7 @@ import os
 import subprocess
 import tempfile
 import streamlit as st
-from moviepy.editor import VideoFileClip # We still need this for a quick duration check
+from moviepy.editor import VideoFileClip
 from speechbrain.pretrained import EncoderClassifier
 
 # --- Model and App Configuration ---
@@ -44,63 +44,58 @@ def download_video_with_yt_dlp(url, temp_dir):
             raise Exception("yt-dlp ran without error but did not produce an output file.")
         return filepath
     except subprocess.CalledProcessError as e:
-        error_message = e.stderr
         st.error("Video Download Failed.")
-        if "403" in error_message or "Forbidden" in error_message:
-            st.warning(
-                "**This is likely due to a block from the video service (e.g., YouTube).** "
-                "The server running this app is often blocked. Please try a direct `.mp4` link for best results."
-            )
-        else:
-             st.info("The video may be private, deleted, or from an unsupported site.")
         with st.expander("Show Technical Error"):
-            st.code(error_message)
+            st.code(e.stderr)
         return None
     except Exception as e:
         st.error(f"An unexpected error occurred during download: {e}")
         return None
 
-# --- THIS IS THE NEW, ROCK-SOLID EXTRACTION FUNCTION ---
+# --- THIS FUNCTION CONTAINS THE DEBUGGING CODE ---
 def extract_audio(video_path, audio_path, max_duration_sec):
     """
-    Extracts audio using a direct, robust call to ffmpeg, bypassing moviepy's parser.
+    Extracts audio using a direct call to ffmpeg and shows full debug output on failure.
     """
     st.info("Extracting audio with direct ffmpeg call...")
     try:
-        # First, we still use moviepy for one quick, safe task: getting the duration.
-        with VideoFileClip(video_path) as clip:
-            duration = clip.duration
-        
-        # Build the ffmpeg command
+        # We still use moviepy for a safe duration check if possible.
+        try:
+            with VideoFileClip(video_path) as clip:
+                duration = clip.duration
+        except Exception:
+            # If moviepy fails to get duration, we'll proceed without it.
+            duration = float('inf') 
+
         command = [
             "ffmpeg",
-            "-i", video_path,       # Input file
-            "-vn",                  # No video
-            "-acodec", "pcm_s16le", # Audio codec for WAV
-            "-ar", "16000",         # Sample rate
-            "-ac", "1",             # Number of channels (mono)
+            "-i", video_path,
+            "-vn",
+            "-acodec", "pcm_s16le",
+            "-ar", "16000",
+            "-ac", "1",
         ]
         
-        # If the video is long, add the duration limit to the command
         if duration > max_duration_sec:
             st.info(f"For efficiency, only the first {max_duration_sec} seconds of audio will be analyzed.")
             command.extend(["-t", str(max_duration_sec)])
         
-        # Add the output file path to the command
         command.append(audio_path)
         
-        # Execute the command
+        # Execute the command and capture its output
         subprocess.run(command, check=True, capture_output=True, text=True)
         
         return True
-    except Exception as e:
-        st.error("Audio Extraction Failed. There might be an issue with the video file's format.")
-        # Provide the ffmpeg error if available
-        if hasattr(e, 'stderr'):
-            with st.expander("Show ffmpeg Error"):
-                st.code(e.stderr)
+        
+    except subprocess.CalledProcessError as e:
+        # --- THIS IS THE CRITICAL DEBUG VISION ---
+        st.error("Audio Extraction Failed: The `ffmpeg` command failed.")
+        with st.expander("Show ffmpeg Technical Error"):
+            st.code(f"FFMPEG STDERR:\n{e.stderr}\n\nFFMPEG STDOUT:\n{e.stdout}")
         return False
-
+    except Exception as e:
+        st.error(f"An unexpected error occurred during audio extraction: {e}")
+        return False
 
 def classify_accent(audio_path, classifier):
     """
