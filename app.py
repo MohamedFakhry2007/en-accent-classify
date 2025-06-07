@@ -23,44 +23,48 @@ def load_model():
         savedir=os.path.join(os.getcwd(), "accent-id-model-cache")
     )
 
-# --- THIS FUNCTION CONTAINS THE DEBUGGING CODE ---
+# --- THIS FUNCTION CONTAINS THE FINAL, DEFINITIVE FIX ---
 def download_video_with_yt_dlp(url, temp_dir):
     """
-    Downloads a video and provides full debug output to diagnose download issues.
+    Downloads the best available stream that contains audio.
     """
     try:
         filepath_template = os.path.join(temp_dir, "video.%(ext)s")
+        # This is the final, universal command.
         command = [
             "yt-dlp",
-            # We add '--verbose' to see the full decision-making process
-            "--verbose",
-            "-f", "bestvideo+bestaudio/best",
+            # THE FIX: This new format string prioritizes audio.
+            # It tells yt-dlp: "Find the best stream that has audio ('+ba'), OR the best stream overall."
+            # This works for both Loom (which has single, combined files) and YouTube (which has separate files).
+            "-f", "ba/best",
+            # Merge into mp4 if necessary
             "--merge-output-format", "mp4",
             "-o", filepath_template,
             url
         ]
         
-        # We run the command and capture its complete output
-        result = subprocess.run(
+        subprocess.run(
             command,
             check=True, capture_output=True, text=True, timeout=120
         )
         
-        # --- THIS IS THE NEW DEBUG VISION ---
-        # We display the full log from yt-dlp in an expander for diagnosis.
-        with st.expander("Show Full Downloader Log"):
-            st.code(result.stdout + "\n" + result.stderr)
-            
         downloaded_files = [f for f in os.listdir(temp_dir) if f.startswith("video")]
         if not downloaded_files:
             raise Exception("yt-dlp ran without error but did not produce an output file.")
         return os.path.join(temp_dir, downloaded_files[0])
     
     except subprocess.CalledProcessError as e:
+        error_message = e.stderr
         st.error("Video Download Failed.")
+        if "403" in error_message or "Forbidden" in error_message:
+            st.warning(
+                "**This is likely due to a block from the video service (e.g., YouTube).** "
+                "The server running this app is often blocked. Please try a direct `.mp4` link for best results."
+            )
+        else:
+             st.info("The video may be private, deleted, or from an unsupported site.")
         with st.expander("Show Technical Error"):
-             # Show the complete output, which contains the reason for the failure
-            st.code(e.stdout + "\n" + e.stderr)
+            st.code(error_message)
         return None
     except Exception as e:
         st.error(f"An unexpected error occurred during download: {e}")
@@ -93,7 +97,7 @@ def extract_audio(video_path, audio_path, max_duration_sec):
 
 def classify_accent(audio_path, classifier):
     """
-    Analyzes the audio file and returns the predicted accent and confidence.
+s    Analyzes the audio file and returns the predicted accent and confidence.
     """
     out_prob, score, index, label = classifier.classify_file(audio_path)
     confidence = round(out_prob.max().item() * 100, 2)
