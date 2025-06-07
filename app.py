@@ -23,16 +23,31 @@ def load_model():
         savedir=os.path.join(os.getcwd(), "accent-id-model-cache")
     )
 
+# --- THIS FUNCTION CONTAINS THE FINAL FIX ---
 def download_video_with_yt_dlp(url, temp_dir):
     """
-    Downloads a video and provides intelligent error messages if it fails.
+    Downloads and merges the best video and audio streams to ensure audio is present.
     """
     try:
         filepath_template = os.path.join(temp_dir, "video.%(ext)s")
+        # This is the new, more robust command for yt-dlp
+        command = [
+            "yt-dlp",
+            # Format selection: best mp4 video + best m4a audio, merged.
+            # Fallback to the best single file if merging isn't possible.
+            "-f", "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best",
+            # Tell yt-dlp to merge the final output into an mp4 container
+            "--merge-output-format", "mp4",
+            "-o", filepath_template,
+            url
+        ]
+        
         subprocess.run(
-            ["yt-dlp", "-o", filepath_template, url],
+            command,
             check=True, capture_output=True, text=True, timeout=120
         )
+        
+        # After merging, the filename might be just "video.mp4"
         downloaded_files = [f for f in os.listdir(temp_dir) if f.startswith("video")]
         if not downloaded_files:
             raise Exception("yt-dlp ran without error but did not produce an output file.")
@@ -44,8 +59,7 @@ def download_video_with_yt_dlp(url, temp_dir):
         if "403" in error_message or "Forbidden" in error_message:
             st.warning(
                 "**This is likely due to a block from the video service (e.g., YouTube).** "
-                "The server running this app is often blocked by services like YouTube. "
-                "Please try a direct `.mp4` link for best results."
+                "The server running this app is often blocked. Please try a direct `.mp4` link for best results."
             )
         else:
              st.info("The video may be private, deleted, or from an unsupported site.")
@@ -56,27 +70,22 @@ def download_video_with_yt_dlp(url, temp_dir):
         st.error(f"An unexpected error occurred during download: {e}")
         return None
 
-# --- THIS FUNCTION CONTAINS THE FINAL FIX ---
 def extract_audio(video_path, audio_path, max_duration_sec):
     """
-    Extracts a clip of audio to a 16kHz mono WAV file using a robust method.
+    Extracts a clip of audio to a 16kHz mono WAV file.
     """
     try:
         with VideoFileClip(video_path) as clip:
-            # 1. Get the full audio track first.
             full_audio = clip.audio
             if full_audio is None:
-                raise Exception("The video file does not contain an audio track.")
+                raise Exception("The video file does not contain an audio track even after download.")
             
-            # 2. Decide whether to use the full audio or a subclip of it.
             if clip.duration > max_duration_sec:
                 st.info(f"For efficiency, only the first {max_duration_sec} seconds of audio will be analyzed.")
-                # 3. Create a subclip *from the audio track directly*.
                 audio_to_write = full_audio.subclip(0, max_duration_sec)
             else:
                 audio_to_write = full_audio
             
-            # 4. Write the final audio object to the file.
             audio_to_write.write_audiofile(
                 audio_path, fps=16000, nbytes=2, codec='pcm_s16le',
                 logger=None, ffmpeg_params=["-ac", "1"]
